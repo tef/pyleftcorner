@@ -18,6 +18,16 @@ class ParseTree(object):
     def __str__(self):
         return "(%s%d %s)"%(self.name,self.precedence," ".join(str(x) for x in self.args))
 
+class OpParseTree(object):
+    def __init__(self, name, precedence, args):
+        self.name = name
+        self.precedence = precedence
+        self.a, self.op, self.b = args
+
+    def __str__(self):
+        return "[%s %d %s]"%(self.a, self.op, self.b)
+
+
 class Terminal(object):
     def __init__(self, arg):
         self.arg = arg
@@ -238,7 +248,11 @@ class Grammar():
         self._name = name
 
     def _add(self,name, p, val):
-        self._rules.append((name,p,lift(val)))
+        try:
+            val, c = val
+        except:
+            c = ParseTree
+        self._rules.append((name,p,c,lift(val)))
 
     def __setattr__(self,name,val):
         if name.startswith('_'):
@@ -266,7 +280,7 @@ class Grammar():
 
     def parse_up(self, input, precedence):
         #print '>parse_up', input
-        for (name,p,r) in self._rules:
+        for (name,p,c,r) in self._rules:
             if precedence.accepts(p):
                 for rule in r.all_rules():
                     left = rule.left_corner(input, precedence)
@@ -275,8 +289,8 @@ class Grammar():
                         right = rule.right_hand(left, input, precedence)
                 #        print r,'     right', rule, input, right
                         if right:
-                            input.pushback(ParseTree(name,p,right))
-                #            print 'parse_up<', input
+                            input.pushback(c(name,p,right))
+                #            print 'parse_up<', inputa
                             return True
                     
         #print 'parse_up<', input
@@ -316,11 +330,13 @@ class Tokenizer(object):
 
 g = Grammar('g')
 
+
+
 g.item = lift("1")| "2" | "3" | "4" 
 g.item = re.compile("\d+")
 g.expr = ("(" + g.expr + ")") | g.add | g.mul | g.item
-g.add[20] = (g.expr < 20) + "+" + (g.expr <= 20) 
-g.mul[10] = (g.expr <= 10) + "*" + (g.expr < 10) 
+g.add[20,OpParseTree] = (g.expr < 20) + "+" + (g.expr <= 20) 
+g.mul[10,OpParseTree] = (g.expr <= 10) + "*" + (g.expr < 10) 
 
 #g.expr[90] = g.add
 
