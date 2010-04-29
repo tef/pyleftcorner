@@ -256,7 +256,9 @@ class Grammar():
         #print '>parse_down', name , input
         while input.has_next() and self.parse_up(input, precedence):
             pass
-        if name == input.peek_name():
+
+        peek = input.peek()
+        if peek and isinstance(peek, ParseTree) and name == peek.name and precedence.accepts(peek.precedence):
             #print 'parse_down< yes', name , input
             return input.next()
         #print 'parse_down<', name , input
@@ -284,12 +286,9 @@ class Tokenizer(object):
     def __init__(self, items):
         self.items = items
 
-    def peek_name(self):
+    def peek(self):
         if not self.items: return None
-        peek = self.items[0]
-        if isinstance(peek, ParseTree):
-            return peek.name
-        return None
+        return self.items[0]
 
     def has_next(self):
         return len(self.items) > 0
@@ -301,7 +300,9 @@ class Tokenizer(object):
             if isinstance(arg, basestring):
                 if self.items[0] == arg:
                     return self.items.pop(0)
-
+            elif hasattr(arg,'match') and isinstance(self.items[0], basestring):
+                if arg.match(self.items[0]):
+                    return self.items.pop(0)
             return None
         else:
             return self.items.pop(0)
@@ -316,6 +317,7 @@ class Tokenizer(object):
 g = Grammar('g')
 
 g.item = lift("1")| "2" | "3" | "4" 
+g.item = re.compile("\d+")
 g.expr = "(" + g.expr + ")" | g.add | g.mul | g.item
 g.add[20] = (g.expr < 20) + "+" + (g.expr <= 20) 
 g.mul[10] = (g.expr < 10) + "*" + (g.expr <= 10) 
@@ -332,7 +334,7 @@ def do(input):
 
 do(["1","*","2","*","4","+", "1"])
 do(["1","*","2","+","1"])
-do(["1","+","2","*","1"])
+do(["1","+","2","*","888888888888"])
 
 
 
