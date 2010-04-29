@@ -22,10 +22,10 @@ class OpParseTree(ParseTree):
     def __init__(self, name, precedence, args):
         self.name = name
         self.precedence = precedence
-        self.a, self.b, self.c = args
+        self.args =  args;
 
     def __str__(self):
-        return "[%s %s %s]"%(self.a.args[0], self.b.arg, self.c.args[0])
+        return "[%s %s %s]"%(self.args[0].args[0], self.args[1].arg, self.args[2].args[0])
 
 
 class Terminal(object):
@@ -203,7 +203,7 @@ class GrammarAnd(GrammarNonTerminal):
                     break
             else:
                 for rt in reversed(rights):
-                    input.pushback(rt)
+                    input.pushback_token(rt)
                 return None
         return rights
 
@@ -274,9 +274,8 @@ class Grammar():
 
     def parse_down(self, name, input, precedence):
         #print '>parse_down', name , input
-        while input.has_next() and self.parse_up(input, precedence):
+        while input.has_next() and self.parse_up(name, input,precedence):
             pass
-
         peek = input.peek()
         if peek and isinstance(peek, ParseTree) and name == peek.name and precedence.accepts(peek.precedence):
             #print 'parse_down< yes', name , input
@@ -284,10 +283,12 @@ class Grammar():
         #print 'parse_down<', name , input
         return None
 
-    def parse_up(self, input, precedence):
+    def parse_up(self,topname,  input, precedence):
         #print '>parse_up', input
+        peek = input.peek()
+        cap = peek and isinstance(peek, ParseTree) and topname == peek.name and precedence.accepts(peek.precedence)
         for (name,p,c,r) in self._rules:
-            if precedence.accepts(p):
+            if precedence.accepts(p) and ((not cap) or name == topname):
                 for rule in r.all_rules():
                     left = rule.left_corner(input, precedence)
                 #    print r,'      left ', rule, input, left
@@ -295,7 +296,7 @@ class Grammar():
                         right = rule.right_hand(left, input, precedence)
                 #        print r,'     right', rule, input, right
                         if right:
-                            input.pushback(c(name,p,right))
+                            input.pushback_token(c(name,p,right))
                 #            print 'parse_up<', inputa
                             return True
                     
@@ -327,6 +328,9 @@ class Tokenizer(object):
         else:
             return self.items.pop(0)
 
+    def pushback_token(self, item):
+        self.pushback(item)
+
     def pushback(self, item):
         self.items.insert(0,item)
 
@@ -338,25 +342,31 @@ g = Grammar('g')
 
 g.item = lift("pi")| "e"
 g.item = re.compile("\d+")
-g.expr = ("(" + g.expr + ")") | g.add | g.mul | g.div | g.sub | g.unary | g.item
 
+g.expr[20,OpParseTree] = (g.expr < 20) + "+" + (g.expr <= 20) 
+g.expr[20,OpParseTree] = (g.expr < 20) + "-" + (g.expr <= 20) 
+g.expr[10,OpParseTree] = (g.expr <= 10) + "*" + (g.expr < 10) 
+g.expr[10,OpParseTree] = (g.expr <= 10) + "/" + (g.expr < 10) 
 
-g.add[20,OpParseTree] = (g.expr < 20) + "+" + (g.expr <= 20) 
-g.sub[20,OpParseTree] = (g.expr < 20) + "-" + (g.expr <= 20) 
-g.mul[10,OpParseTree] = (g.expr <= 10) + "*" + (g.expr < 10) 
-g.div[10,OpParseTree] = (g.expr <= 10) + "/" + (g.expr < 10) 
+g.expr = "(" + (g.expr <= 100) + ")" | g.item
+g.block = g.expr | g.foo
+
+g.foo = "foo" + g.item + g.item
 
 g.unary[5] = "-" + (g.expr <= 5)
 
 #g.expr[90] = g.add
 
+# do we want *some* ambiguity? i.e in parsing up?
 
 
 def do(input):
     t = Tokenizer(input)
     print 'input', input
-    print 'tree', g.expr.parse(t)
-    print 'leftovers', t.items
+    print 'tree', g.block.parse(t)
+    if t.items:
+        print 'leftovers', t
+    print
 
 do(["1","*","2","+","1"])
 do(["1","+","2","*","8"])
@@ -365,7 +375,8 @@ do(["1","*","2","*","8"])
 do("(1+2)*3")
 do("(2)")
 do("1+2-3/5")
-
+do("1+2/3/5")
+do(["foo","1","2"])
 
 
 
