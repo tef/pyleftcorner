@@ -304,7 +304,7 @@ class Grammar():
 
 class Tokenizer(object):
     def __init__(self, items):
-        self.items = items
+        self.items = list(items)
 
     def peek(self):
         if not self.items: return None
@@ -336,11 +336,17 @@ class Tokenizer(object):
 
 g = Grammar('g')
 
-g.item = lift("1")| "2" | "3" | "4" 
+g.item = lift("pi")| "e"
 g.item = re.compile("\d+")
-g.expr = ("(" + g.expr + ")") | g.add | g.mul | g.item
+g.expr = ("(" + g.expr + ")") | g.add | g.mul | g.div | g.sub | g.unary | g.item
+
+
 g.add[20,OpParseTree] = (g.expr < 20) + "+" + (g.expr <= 20) 
+g.sub[20,OpParseTree] = (g.expr < 20) + "-" + (g.expr <= 20) 
 g.mul[10,OpParseTree] = (g.expr <= 10) + "*" + (g.expr < 10) 
+g.div[10,OpParseTree] = (g.expr <= 10) + "/" + (g.expr < 10) 
+
+g.unary[5] = "-" + (g.expr <= 5)
 
 #g.expr[90] = g.add
 
@@ -356,8 +362,9 @@ do(["1","*","2","+","1"])
 do(["1","+","2","*","8"])
 do(["1","+","2","+","1"])
 do(["1","*","2","*","8"])
-do(list("(1+2)*3"))
-do(list("(2))"))
+do("(1+2)*3")
+do("(2)")
+do("1+2-3/5")
 
 
 
