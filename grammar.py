@@ -16,16 +16,16 @@ class ParseTree(object):
         self.args = args
 
     def __str__(self):
-        return "(%s%d %s)"%(self.name,self.precedence," ".join(str(x) for x in self.args))
+        return "%s%d(%s)"%(self.name,self.precedence," ".join(str(x) for x in self.args))
 
-class OpParseTree(object):
+class OpParseTree(ParseTree):
     def __init__(self, name, precedence, args):
         self.name = name
         self.precedence = precedence
-        self.a, self.op, self.b = args
+        self.a, self.b, self.c = args
 
     def __str__(self):
-        return "[%s %d %s]"%(self.a, self.op, self.b)
+        return "[%s %s %s]"%(self.a.args[0], self.b.arg, self.c.args[0])
 
 
 class Terminal(object):
@@ -123,8 +123,18 @@ class GrammarRule(GrammarNonTerminal):
     def __ne__(self, other):
         return GrammarConstraint(self,NE(other))
 
-    def __setitem__(self, index, val):
-        self.grammar._add(self.name,index,val)
+    def __setitem__(self, p, val):
+        try:
+            self.grammar._add(self.name,p[0],val,p[1])
+        except:
+            self.grammar._add(self.name,p,val)
+
+    def __getitem__(self, p, val):
+        class Temp(object):
+            def __setitem__(s, c, val):
+                print 'iset',self,p,val
+                self.grammar._add(self.name,p,val,c)
+        return Temp()
 
 class GrammarOr(GrammarObject):
     def __init__(self, a,b):
@@ -203,7 +213,7 @@ class GrammarConstraint(GrammarNonTerminal):
         self.precedence = precedence
 
     def __str__(self):
-        return "%s:%s[%s%s]"%(self.grammar._name, self.name, self.c, self.n)
+        return str(self.rule)
 
     def left_corner(self, input,p):
         return self.rule.left_corner(input, self.precedence)
@@ -247,11 +257,7 @@ class Grammar():
         self._rules = []
         self._name = name
 
-    def _add(self,name, p, val):
-        try:
-            val, c = val
-        except:
-            c = ParseTree
+    def _add(self,name, p, val, c = ParseTree):
         self._rules.append((name,p,c,lift(val)))
 
     def __setattr__(self,name,val):
@@ -329,8 +335,6 @@ class Tokenizer(object):
 
 
 g = Grammar('g')
-
-
 
 g.item = lift("1")| "2" | "3" | "4" 
 g.item = re.compile("\d+")
