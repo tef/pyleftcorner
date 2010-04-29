@@ -51,13 +51,13 @@ class GrammarTerminal(GrammarObject):
         return "'%s'"%self.terminal
 
 
-    def left_corner(self, input,p):
-        return self.parse(input,p)
+    def left_corner(self, input, precedence):
+        return input.next(self.terminal)
 
-    def parse(self, input, precedence):
-        token = input.next(self.terminal)
+    def parse(self, input, p):
+        token = self.left_corner(input, p)
         if token:
-            return token
+            return Terminal(token)
         else:
             return None
 
@@ -318,9 +318,9 @@ g = Grammar('g')
 
 g.item = lift("1")| "2" | "3" | "4" 
 g.item = re.compile("\d+")
-g.expr = "(" + g.expr + ")" | g.add | g.mul | g.item
+g.expr = ("(" + g.expr + ")") | g.add | g.mul | g.item
 g.add[20] = (g.expr < 20) + "+" + (g.expr <= 20) 
-g.mul[10] = (g.expr < 10) + "*" + (g.expr <= 10) 
+g.mul[10] = (g.expr <= 10) + "*" + (g.expr < 10) 
 
 #g.expr[90] = g.add
 
@@ -332,9 +332,13 @@ def do(input):
     print 'tree', g.expr.parse(t)
     print 'leftovers', t.items
 
-do(["1","*","2","*","4","+", "1"])
 do(["1","*","2","+","1"])
-do(["1","+","2","*","888888888888"])
+do(["1","+","2","*","8"])
+do(["1","+","2","+","1"])
+do(["1","*","2","*","8"])
+do(list("(1+2)*3"))
+do(list("(2))"))
+
 
 
 
