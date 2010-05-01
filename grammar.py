@@ -52,6 +52,8 @@ class GrammarObject(object):
     def all_rules(self):
         return (self,)
 
+    def corner_names(self):
+        return ()
 
 class GrammarTerminal(GrammarObject):
     def __init__(self, terminal):
@@ -61,24 +63,24 @@ class GrammarTerminal(GrammarObject):
         return "'%s'"%self.terminal
 
 
-    def left_corner(self, input, precedence):
+    def parse_left_corner(self, input, precedence):
         return input.next(self.terminal)
 
     def parse(self, input, p):
-        token = self.left_corner(input, p)
+        token = self.parse_left_corner(input, p)
         if token:
             return Terminal(token)
         else:
             return None
 
-    def right_hand(self, left, input,p):
+    def parse_right_hand(self, left, input,p):
         return Terminal(left)
 
 class GrammarNonTerminal(GrammarObject):
-    def left_corner(self, input,p):
+    def parse_left_corner(self, input,p):
         return None
 
-    def right_hand(self, left, input,p):
+    def parse_right_hand(self, left, input,p):
         return None
 
 class GrammarRule(GrammarNonTerminal):
@@ -86,7 +88,10 @@ class GrammarRule(GrammarNonTerminal):
         self.grammar = grammar
         self.name = name
 
-    def left_corner(self, input, p):
+    def corner_names(self):
+        return (self.name,)
+
+    def parse_left_corner(self, input, p):
         left = input.next()
         if isinstance(left, ParseTree) and left.name == self.name:
             return left
@@ -94,7 +99,7 @@ class GrammarRule(GrammarNonTerminal):
             input.pushback(left)
             return None
 
-    def right_hand(self, left, input,p):
+    def parse_right_hand(self, left, input,p):
         return left
 
     def parse(self, input, precedence=None):
@@ -140,6 +145,12 @@ class GrammarOr(GrammarObject):
     def __init__(self, a,b):
         self.rules = [lift(a),lift(b)]
 
+    def corner_names(self):
+        s = set()
+        for r in self.rules:
+            s.update(r.corner_names())
+        return s
+
     def __or__(self, item):
         self.rules.append(lift(item))
         return self
@@ -151,10 +162,10 @@ class GrammarOr(GrammarObject):
     def __str__(self):
         return " | ".join(str(r) for r in self.rules)
 
-    def left_corner(self,input,p):
+    def parse_left_corner(self,input,p):
         return None
 
-    def right_hand(self, left, input):
+    def parse_right_hand(self, left, input):
         return None
 
     def all_rules(self):
@@ -176,6 +187,9 @@ class GrammarAnd(GrammarNonTerminal):
         self.rules.append(lift(item))
         return self
 
+    def corner_names(self):
+        return self.rules[0].corner_names();
+
     def __radd__(self, item):
         self.rules.insert(0,lift(item))
         return self
@@ -183,11 +197,11 @@ class GrammarAnd(GrammarNonTerminal):
     def __str__(self):
         return " + ".join(str(r) for r in self.rules)
 
-    def left_corner(self, input,p):
-        return self.rules[0].left_corner(input,p)
+    def parse_left_corner(self, input,p):
+        return self.rules[0].parse_left_corner(input,p)
 
-    def right_hand(self, left, input,p):
-        right0 = self.rules[0].right_hand(left, input,p)
+    def parse_right_hand(self, left, input,p):
+        right0 = self.rules[0].parse_right_hand(left, input,p)
         #print 'and',  self.rules, right0
         if not right0:
             input.pushback(left)
@@ -215,11 +229,11 @@ class GrammarConstraint(GrammarNonTerminal):
     def __str__(self):
         return str(self.rule)
 
-    def left_corner(self, input,p):
-        return self.rule.left_corner(input, self.precedence)
+    def parse_left_corner(self, input,p):
+        return self.rule.parse_left_corner(input, self.precedence)
 
-    def right_hand(self, left, input, p):
-        return self.rule.right_hand(left, input, self.precedence)
+    def parse_right_hand(self, left, input, p):
+        return self.rule.parse_right_hand(left, input, self.precedence)
 
     def all_rules(self):
         x = []
@@ -254,11 +268,39 @@ default_precedence=LE(100)
 
 class Grammar():
     def __init__(self, name):
-        self._rules = []
+        self._rules = {}
         self._name = name
+        self._corners = {}
+        self._corners_idx = {}
+
 
     def _add(self,name, p, val, c = ParseTree):
-        self._rules.append((name,p,c,lift(val)))
+        v = lift(val)
+        self._add_corner(name, v)
+        if name not in self._rules:
+            self._rules[name] = []
+        self._rules[name].append((p,c,v))
+
+    def _add_corner(self, name, val):
+        if name not in self._corners:
+            self._corners[name] = set()
+            self._corners[name].add(name)
+
+        corners = val.corner_names()
+        if corners:
+            print name , 'adding corners', corners
+            self._corners[name].update(corners)
+            for c in corners:
+                print c
+                if c in self._corners:
+                    self._corners[name].update(self._corners[c])
+                if c not in self._corners_idx:
+                    self._corners_idx[c] = set()
+                self._corners_idx[c].add(name)
+                if name in self._corners_idx:
+                    for n in self._corners_idx[name]:
+                      self._corners[n].add(c)
+                      self._corners_idx[c].add(n)
 
     def __setattr__(self,name,val):
         if name.startswith('_'):
@@ -276,36 +318,38 @@ class Grammar():
         #print '>parse_down', name , input
         while input.has_next() and self.parse_up(name, input,precedence):
             pass
-        peek = input.peek()
-        if peek and isinstance(peek, ParseTree) and name == peek.name and precedence.accepts(peek.precedence):
-            #print 'parse_down< yes', name , input
-            return input.next()
+        if True:
+            peek = input.peek()
+            if peek and isinstance(peek, ParseTree) and name == peek.name and precedence.accepts(peek.precedence):
+                #print 'parse_down< yes', name , input
+                return input.next()
         #print 'parse_down<', name , input
         return None
 
     def parse_up(self,topname,  input, precedence):
         #print '>parse_up', input
         peek = input.peek()
-        cap = peek and isinstance(peek, ParseTree) and topname == peek.name and precedence.accepts(peek.precedence)
-        for (name,p,c,r) in self._rules:
-            if precedence.accepts(p) and ((not cap) or name == topname):
-                for rule in r.all_rules():
-                    left = rule.left_corner(input, precedence)
-                #    print r,'      left ', rule, input, left
-                    if left:
-                        right = rule.right_hand(left, input, precedence)
-                #        print r,'     right', rule, input, right
-                        if right:
-                            input.pushback_token(c(name,p,right))
-                #            print 'parse_up<', inputa
-                            return True
+        # change this to take any child left corner.
+        for name in self._corners[topname]:
+            for p,c,r in self._rules[name]:
+                if precedence.accepts(p):
+                    for rule in r.all_rules():
+                        left = rule.parse_left_corner(input, precedence)
+                    #    print r,'      left ', rule, input, left
+                        if left:
+                            right = rule.parse_right_hand(left, input, precedence)
+                    #        print r,'     right', rule, input, right
+                            if right:
+                                input.pushback_token(c(name,p,right))
+                    #            print 'parse_up<', inputa
+                                return True
                     
         #print 'parse_up<', input
         return False
 
 class Tokenizer(object):
     def __init__(self, items):
-        self.items = list(items)
+        self.items = list(items)+["$"]
 
     def peek(self):
         if not self.items: return None
@@ -337,21 +381,20 @@ class Tokenizer(object):
     def __str__(self):
         return '[['+" ".join(str(x) for x in self.items)+']]'
 
+# fixme - make greedy?
 
 g = Grammar('g')
 
 g.item = lift("pi")| "e"
 g.item = re.compile("\d+")
 
-g.expr[20,OpParseTree] = (g.expr < 20) + "+" + (g.expr <= 20) 
-g.expr[20,OpParseTree] = (g.expr < 20) + "-" + (g.expr <= 20) 
-g.expr[10,OpParseTree] = (g.expr <= 10) + "*" + (g.expr < 10) 
-g.expr[10,OpParseTree] = (g.expr <= 10) + "/" + (g.expr < 10) 
-
+g.expr[20] = (g.expr < 20) + "+" + (g.expr <= 20) 
+g.expr[20] = (g.expr < 20) + "-" + (g.expr <= 20) 
+g.expr[10] = (g.expr <= 10) + "*" + (g.expr < 10) 
+g.expr[10] = (g.expr <= 10) + "/" + (g.expr < 10) 
 g.expr = "(" + (g.expr <= 100) + ")" | g.item
-g.block = g.expr | g.foo
 
-g.foo = "foo" + g.item + g.item
+g.block = g.expr +"$"
 
 g.unary[5] = "-" + (g.expr <= 5)
 
@@ -376,12 +419,25 @@ do("(1+2)*3")
 do("(2)")
 do("1+2-3/5")
 do("1+2/3/5")
-do(["foo","1","2"])
-
-
 
 
 """
+bugs: no indirect left recursion 
+bugs: cannot handle ambiguous 'during' parses.
+
+tree climing -- when to stop
+
+    if I have expr + expr , expr * exp
+    I want to to return longest match that is an expr.
+    if I have expr + item
+    I want it to not do item -> expr as well then it will
+    never parse successfully.
+
+Solution a: cap the growth up to the name at the top?
+    removes left indirect recursion though.
+
+Solution b: handle non determinism
+
 precedence climbing 
 
 top down parsing - rewrite from the top down --> expr 
@@ -396,7 +452,6 @@ left corner / early parsing.
 given rule a ---> fooBARbaz , bottom up on foo, top down on baz. i.e
 
 when BAR, can we get foo from the left hand side
-
 
 thing is, this is just pegs with left recursion. i.e bottom up + dcg + memoization
 
