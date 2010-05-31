@@ -1,18 +1,15 @@
 import re
 
-
 def main():
     g = Grammar('g')
 
-    g.item = lift("pi")| "e"
     g.item[0,ItemParseTree] = re.compile("\d+")
 
-    
     constructor = OpParseTree
     g.add[20,constructor] = (g.expr < 20) + "+" + (g.expr <= 20) 
     g.sub[20,constructor] = (g.expr < 20) + "-" + (g.expr <= 20) 
     g.mul[10,constructor] = (g.expr <= 10) + "*" + (g.expr < 10) 
-    g.div[10, constructor] = (g.expr <= 10) + "/" + (g.expr < 10)
+    g.div[10,constructor] = (g.expr <= 10) + "/" + (g.expr < 10)
 
 
     def sub(name, p, args):
@@ -35,7 +32,7 @@ def main():
 
     do(["1","*","2","+","1"])
     do(["1","+","2","*","8"])
-    do(["1","+","2","+","1"])
+    do(["1","*","2","+","1"])
     do(["1","*","2","*","8"])
     do("(1+2)*3")
     do("(2)")
@@ -389,7 +386,7 @@ class Grammar():
         return self._name+":\n\t"+"".join("%s%s --> %s\n\t"%((n[0],"[%s]"%n[1]) for n,r in self._rules.items()))
 
     def parse(self, name, input, precedence):
-        #print '>parse', name , input
+        print '>parse', name , input
         while input.has_next() and self.parse_up(name, input,precedence):
             pass # repeately grow the input until it cannot apply any more rules
         peek = input.peek()
@@ -400,7 +397,7 @@ class Grammar():
         return None
 
     def parse_up(self,topname,  input, precedence):
-        #print '>parse_up', input
+        print '>parse_up', input
         peek = input.peek()
         # for each of the non-terminals that can appear in the left corner of a top-name rule
         for name in self._corners[topname]:
