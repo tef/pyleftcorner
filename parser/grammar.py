@@ -1,67 +1,7 @@
 import re
 
-def main():
-    g = Grammar('g')
-
-    g.item[0,ItemParseTree] = re.compile("\d+")
-
-    constructor = OpParseTree
-    g.add[20,constructor] = (g.expr < 20) + "+" + (g.expr <= 20) 
-    g.sub[20,constructor] = (g.expr < 20) + "-" + (g.expr <= 20) 
-    g.mul[10,constructor] = (g.expr <= 10) + "*" + (g.expr < 10) 
-    g.div[10,constructor] = (g.expr <= 10) + "/" + (g.expr < 10)
-
-
-    def sub(name, p, args):
-        return args[1] # return the middle expression
-
-    g.subexpr[0, sub] = "(" + (g.expr <= 100) + ")"
-
-    g.expr[0, ExprParseTree] = g.subexpr | g.item | g.add | g.sub | g.mul | g.div
-
-    g.block = g.expr +"$"
-
-
-    def do(input):
-        t = Tokenizer(input)
-        print 'input', input
-        print 'tree', g.block.parse(t)
-        if t.items:
-            print 'leftovers', t
-        print
-
-    do(["1","*","2","+","1"])
-    do(["1","+","2","*","8"])
-    do(["1","*","2","+","1"])
-    do(["1","*","2","*","8"])
-    do("(1+2)*3")
-    do("(2)")
-    do("1+2-3/5")
-    do("1+2/3/5")
-
-
-
-# precedence functions
-class LE(object):
-    def __init__(self, c):
-        self.c = c
-
-    def accepts(self, o):
-        return o <= self.c
-
-    def __str__(self):
-        return "<=%s"%self.c
-
-class LT(object):
-    def __init__(self, c):
-        self.c = c
-
-    def accepts(self, o):
-        return o < self.c 
-
-    def __str__(self):
-        return "<%s"%self.c
-
+from precedence import *
+from parse_tree import *
 
 default_precedence=LE(100)
 
@@ -72,54 +12,6 @@ def lift(item):
         return item
     else:
         return GrammarTerminal(item)
-
-
-#parse tree
-class ParseTree(object):
-    def __init__(self, name, precedence, args):
-        self.name = name
-        self.precedence = precedence
-        if isinstance(args, (ParseTree,Terminal)):
-            args = (args,)
-        self.args = args
-
-    def __str__(self):
-        return "%s(%s)"%(self.name," ".join(str(x) for x in self.args))
-
-class OpParseTree(ParseTree):
-    def __init__(self, name, precedence, args):
-        self.name = name
-        self.precedence = precedence
-        self.args =  args;
-
-    def __str__(self):
-        return "[%s %s %s]"%(self.args[0], self.args[1].arg, self.args[2])
-
-class ItemParseTree(ParseTree):
-    def __init__(self, name, precedence, args):
-        self.name = name
-        self.precedence = precedence
-        self.args =  args;
-
-    def __str__(self):
-        return str(self.args)
-
-class ExprParseTree(ParseTree):
-    def __init__(self, name, precedence, args):
-        self.name = name
-        self.precedence = precedence
-        self.args =  args;
-
-    def __str__(self):
-        return "%s"%self.args
-
-class Terminal(object):
-    def __init__(self, arg):
-        self.arg = arg
-        self.precedence = 0
-
-    def __str__(self):
-        return '<'+self.arg+'>'
 
 
 #Grammar Objects
@@ -157,12 +49,12 @@ class GrammarTerminal(GrammarObject):
     def parse(self, input, p):
         token = self.parse_left_corner(input, p)
         if token:
-            return Terminal(token)
+            return ParseTerminal(token)
         else:
             return None
 
     def parse_right_hand(self, left, input,p):
-        return Terminal(left)
+        return ParseTerminal(left)
 
 class GrammarNonTerminal(GrammarObject):
     "Any non terminal"
@@ -227,7 +119,7 @@ class GrammarRule(GrammarNonTerminal):
     def __getitem__(self, p, val):
         class Temp(object):
             def __setitem__(s, c, val):
-                print 'iset',self,p,val
+                #print 'iset',self,p,val
                 self.grammar._add(self.name,p,val,c)
         return Temp()
 
@@ -386,7 +278,7 @@ class Grammar():
         return self._name+":\n\t"+"".join("%s%s --> %s\n\t"%((n[0],"[%s]"%n[1]) for n,r in self._rules.items()))
 
     def parse(self, name, input, precedence):
-        print '>parse', name , input
+        #print '>parse', name , input
         while input.has_next() and self.parse_up(name, input,precedence):
             pass # repeately grow the input until it cannot apply any more rules
         peek = input.peek()
@@ -397,7 +289,7 @@ class Grammar():
         return None
 
     def parse_up(self,topname,  input, precedence):
-        print '>parse_up', input
+        #print '>parse_up', input
         peek = input.peek()
         # for each of the non-terminals that can appear in the left corner of a top-name rule
         for name in self._corners[topname]:
@@ -415,43 +307,4 @@ class Grammar():
                                 return True
                     
         #print 'parse_up<', input
-        return False
 
-class Tokenizer(object):
-    def __init__(self, items):
-        self.items = list(items)+["$"]
-
-    def peek(self):
-        if not self.items: return None
-        return self.items[0]
-
-    def has_next(self):
-        return len(self.items) > 0
-
-    def next(self, *args):
-        if not self.items: return None
-        if args:
-            arg, = args
-            if isinstance(arg, basestring):
-                if self.items[0] == arg:
-                    return self.items.pop(0)
-            elif hasattr(arg,'match') and isinstance(self.items[0], basestring):
-                if arg.match(self.items[0]):
-                    return self.items.pop(0)
-            return None
-        else:
-            return self.items.pop(0)
-
-    def pushback_token(self, item):
-        self.pushback(item)
-
-    def pushback(self, item):
-        self.items.insert(0,item)
-
-    def __str__(self):
-        return '[['+" ".join(str(x) for x in self.items)+']]'
-
-
-
-
-if __name__ == '__main__': main()
